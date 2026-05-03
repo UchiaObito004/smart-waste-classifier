@@ -1,0 +1,8 @@
+loki/
+data/
+models/
+__pycache__/
+*.pyc
+.git/
+.dvc/
+*.ipynb
