@@ -239,4 +239,4 @@ smart-waste-classifier/
 
 ## Author
 
-Parivat — [GitHub](https://github.com/UchiaObito004)
+Bhushan — [GitHub](https://github.com/UchiaObito004)
