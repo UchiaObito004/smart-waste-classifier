@@ -10,11 +10,11 @@ A deep learning project that classifies waste images into 6 categories. Built en
 
 **Upload interface:**
 
-![Upload](assets/streamlit_upload.png)
+![Upload](streamlit_upload.png)
 
 **Prediction result:**
 
-![Result](assets/streamlit_result.png)
+![Result](streamlit_result.png)
 
 ---
 
@@ -218,9 +218,8 @@ smart-waste-classifier/
 ├── code.ipynb              ← Full training notebook
 ├── data.dvc                ← DVC pointer to dataset
 ├── requirements.txt        ← All dependencies
-├── assets/
-│   ├── streamlit_upload.png
-│   └── streamlit_result.png
+├── streamlit_upload.png    ← UI screenshot
+├── streamlit_result.png    ← Result screenshot
 ├── .dvc/                   ← DVC config
 └── .github/
     └── workflows/
