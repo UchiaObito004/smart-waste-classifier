@@ -1,12 +1,12 @@
 # Smart Waste Classifier
 
-Improper waste disposal is one of the biggest contributors to environmental pollution — a large part of it happens simply because people don't know which bin an item belongs to. This project tackles that problem with a deep learning system that looks at a photo of a waste item and instantly tells you its category.
+Improper waste disposal is one of the biggest contributors to environmental pollution — a large part of it happens simply because people don't know which bin an item belongs to. This project tackles that problem with a **deep learning system** that looks at a photo of a waste item and instantly tells you its category.
 
-Built completely end-to-end — from raw dataset to a working web app. The model is based on EfficientNetB0 pretrained on ImageNet, fine-tuned on the TrashNet dataset using a two-phase transfer learning strategy. Predictions are served via a FastAPI REST endpoint and a Streamlit UI where you can upload any waste image and get an instant classification with confidence scores.
+Built completely **end-to-end** — from raw dataset to a working web app. The model is based on **EfficientNetB0** pretrained on **ImageNet**, fine-tuned on the **TrashNet dataset** using a **two-phase transfer learning** strategy. Predictions are served via a **FastAPI** REST endpoint and a **Streamlit UI** where you can upload any waste image and get an instant classification with confidence scores.
 
-The project also follows MLOps best practices — dataset and model versioning with DVC, and automated CI checks on every push via GitHub Actions.
+The project also follows **MLOps best practices** — dataset and model versioning with **DVC**, and automated **CI checks** on every push via **GitHub Actions**.
 
-> **87.47% validation accuracy** on ~500 unseen images · **91%+ confidence** on real-world images · Trained on TrashNet (~2,500 images, 6 classes) · Stack: EfficientNetB0, FastAPI, Streamlit, DVC, GitHub Actions
+> **87.47% validation accuracy** on ~500 unseen images · **91%+ confidence** on real-world images · Trained on TrashNet (**~2,500 images, 6 classes**) · Stack: **EfficientNetB0, FastAPI, Streamlit, DVC, GitHub Actions**
 ---
 
 ## Screenshots
