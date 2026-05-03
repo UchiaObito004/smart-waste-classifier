@@ -1,9 +1,0 @@
-loki/
-garbage-classification.zip
-data/
-models/
-__pycache__/
-*.pyc
-*.keras
-*.h5
-.DS_Store
