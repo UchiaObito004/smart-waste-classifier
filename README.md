@@ -1,12 +1,14 @@
 # Smart Waste Classifier
 
-A deep learning project that classifies waste images into 6 categories. Built end-to-end — from training a model to serving it via an API with a simple UI on top.
+A deep learning project that classifies waste images into 6 categories. Built end-to-end — from training a model to serving it via a REST API with a Streamlit UI on top.
+
+> **87.47% validation accuracy** on ~500 unseen images using EfficientNetB0 + two-phase transfer learning.
 
 ---
 
 ## Screenshots
 
-**Upload an image:**
+**Upload interface:**
 
 ![Upload](assets/streamlit_upload.png)
 
@@ -16,82 +18,144 @@ A deep learning project that classifies waste images into 6 categories. Built en
 
 ---
 
+## How it works — full pipeline
+
+```
+TrashNet Dataset (Kaggle)
+        ↓
+  Data Split 80/20
+  + Augmentation (flip, rotate, zoom)
+        ↓
+  EfficientNet Preprocessing
+  (scale images to -1 to 1)
+        ↓
+  EfficientNetB0 (pretrained on ImageNet)
+  + Custom Head (Dense → Dropout → Softmax)
+        ↓
+  Phase 1 — Train head only (base frozen)
+        ↓
+  Phase 2 — Fine-tune top 20 layers (lr=1e-5)
+        ↓
+  Trained Model (87.47% val accuracy)
+        ↓
+  ┌─────────────┬──────────────┬──────────────┐
+  │  FastAPI    │  Streamlit   │  GitHub      │
+  │  /predict   │  Upload UI   │  Actions CI  │
+  └─────────────┴──────────────┴──────────────┘
+        ↓
+  Waste classified with 91%+ confidence
+```
+
+---
+
 ## What it does
 
-You upload a photo of a waste item and the model tells you what category it belongs to — cardboard, glass, metal, paper, plastic, or trash. It runs as a FastAPI backend with a Streamlit frontend.
+Upload a photo of a waste item — the model returns the predicted category and confidence score for all 6 classes.
+
+**6 categories:** Cardboard · Glass · Metal · Paper · Plastic · Trash
 
 ---
 
 ## Dataset
 
-Used the TrashNet dataset from Kaggle — around 2,500 images across 6 waste categories. Split it 80/20 for training and validation.
+- **Source:** TrashNet (Kaggle)
+- **Size:** ~2,500 labeled images
+- **Split:** 80% training (~2,024 images) / 20% validation (~503 images)
 
-| Class | Examples |
+---
+
+## Model — EfficientNetB0
+
+Why EfficientNetB0 over other models:
+
+| Model | Params | Speed | Accuracy |
+|---|---|---|---|
+| ResNet50 | 25M | Slow | Good |
+| MobileNetV2 | 3.4M | Fast | Moderate |
+| **EfficientNetB0** | **5.3M** | **Fast** | **Good ✅** |
+
+EfficientNet uses **compound scaling** — it scales depth, width, and resolution together in a balanced way. This gives better accuracy per parameter compared to just making a model deeper or wider. The core building block is MBConv with a **Squeeze-and-Excitation (SE)** attention mechanism that learns which features matter most in each image.
+
+**Custom classification head:**
+
+```
+EfficientNetB0 (pretrained on ImageNet, frozen in Phase 1)
+        ↓
+GlobalAveragePooling2D   ← compress 7×7×1280 feature map to 1280 vector
+        ↓
+Dense(256) + ReLU        ← learn waste-specific patterns
+        ↓
+Dropout(0.3)             ← prevent overfitting
+        ↓
+Dense(6) + Softmax       ← probability for each of 6 classes
+```
+
+---
+
+## Training — Two-Phase Transfer Learning
+
+### Why two phases?
+
+If you unfreeze and fine-tune immediately, the random weights in the new head send noisy gradients through the entire pretrained network — destroying the ImageNet knowledge. This is called **catastrophic forgetting**.
+
+So we train in two phases:
+
+**Phase 1 — Head only (base frozen)**
+- Learning rate: `1e-3`
+- Only the custom head trains
+- Base preserves pretrained ImageNet weights
+- Runs for up to 10 epochs
+
+**Phase 2 — Fine-tune top layers**
+- Unfreeze top 20 layers of EfficientNetB0
+- Learning rate: `1e-5` (100x smaller — avoids destroying pretrained weights)
+- Top layers adapt to waste images; bottom layers stay frozen
+
+### Training callbacks
+
+| Callback | What it does |
 |---|---|
-| Cardboard | Boxes, packaging |
-| Glass | Bottles, jars |
-| Metal | Cans, tins |
-| Paper | Newspapers, sheets |
-| Plastic | Bottles, containers |
-| Trash | General non-recyclable waste |
+| EarlyStopping | Stops if val_loss doesn't improve for 3 epochs |
+| ModelCheckpoint | Saves best model automatically |
+| ReduceLROnPlateau | Reduces learning rate when progress stalls |
 
----
-
-## Model
-
-Built on top of EfficientNetB0 pretrained on ImageNet. Kept the base frozen initially, trained a custom head, then fine-tuned the top layers in a second phase.
-
-Custom head:
-```
-EfficientNetB0 (pretrained, frozen)
-        ↓
-GlobalAveragePooling2D
-        ↓
-Dense(256) + ReLU
-        ↓
-Dropout(0.3)
-        ↓
-Dense(6) + Softmax
-```
-
-One thing worth noting — EfficientNet expects inputs scaled to -1 to 1, not 0 to 1. Using the wrong preprocessing was causing poor accuracy early on. Fixed it using `tf.keras.applications.efficientnet.preprocess_input`.
-
-**Final validation accuracy: 87.47%**
-
----
-
-## Training
-
-Used a two-phase approach:
-
-- **Phase 1** — Freeze the EfficientNetB0 base, train only the classification head. Learning rate: `1e-3`
-- **Phase 2** — Unfreeze the top 20 layers and fine-tune with a low learning rate of `1e-5`
-
-The reason for two phases is to avoid catastrophic forgetting — if you start fine-tuning with random weights in the head, the noisy gradients destroy the pretrained weights.
-
-Used EarlyStopping, ModelCheckpoint, and ReduceLROnPlateau callbacks throughout.
+### Results
 
 | Metric | Value |
 |---|---|
 | Training accuracy | ~98% |
-| Validation accuracy | 87.47% |
+| **Validation accuracy** | **87.47%** |
 | Best epoch | 7 |
+
+The gap between training and validation accuracy (98% vs 87%) is mild overfitting — expected for a small 2,500 image dataset. Phase 2 fine-tuning didn't improve over Phase 1, so the best Phase 1 weights were restored.
 
 ---
 
-## Stack
+## A critical preprocessing detail
+
+EfficientNet expects inputs scaled to **-1 to 1**, not the standard 0 to 1. Using wrong rescaling caused poor accuracy in early runs. The fix:
+
+```python
+tf.keras.applications.efficientnet.preprocess_input(image)
+```
+
+This is an easy-to-miss bug that has a big impact on accuracy.
+
+---
+
+## MLOps stack
 
 | Tool | Purpose |
 |---|---|
-| TensorFlow / Keras | Model training |
-| FastAPI | Serving predictions via REST API |
-| Streamlit | Simple UI for uploading images and seeing results |
-| DVC | Versioning the dataset and model |
-| GitHub Actions | Runs basic checks on every push |
+| **TensorFlow / Keras** | Model training and inference |
+| **DVC** | Version control for dataset and model files |
+| **FastAPI** | REST API endpoint for predictions |
+| **Streamlit** | Web UI for uploading images and viewing results |
+| **GitHub Actions** | CI pipeline — checks run on every push |
 
 ---
 
-## Running it locally
+## Running locally
 
 ```bash
 git clone https://github.com/UchiaObito004/smart-waste-classifier.git
@@ -102,23 +166,23 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Start the API:
+**Start the API:**
 ```bash
 uvicorn api:app --reload
 ```
 
-Start the UI in a separate terminal:
+**Start the UI** (new terminal):
 ```bash
 streamlit run app.py
 ```
 
-Test a prediction from terminal:
+**Test from terminal:**
 ```bash
 curl -X POST "http://localhost:8000/predict" \
-  -F "file=@/path/to/your/image.jpg"
+  -F "file=@/path/to/image.jpg"
 ```
 
-Example response:
+**Response:**
 ```json
 {
   "predicted_class": "plastic",
@@ -136,24 +200,6 @@ Example response:
 
 ---
 
-## Project structure
-
-```
-├── api.py                  ← FastAPI inference endpoint
-├── app.py                  ← Streamlit UI
-├── code.ipynb              ← Training notebook
-├── data.dvc                ← DVC tracking for dataset
-├── assets/
-│   ├── streamlit_upload.png
-│   └── streamlit_result.png
-├── requirements.txt
-└── .github/
-    └── workflows/
-        └── ci.yml          ← GitHub Actions CI pipeline
-```
-
----
-
 ## API endpoints
 
 | Method | Endpoint | Description |
@@ -163,18 +209,32 @@ Example response:
 
 ---
 
-## Results
+## Project structure
 
-Validation accuracy of 87.47% on ~500 unseen images. Training accuracy reached ~98% which shows some overfitting — expected for a 2,500 image dataset. The model still generalizes well to real-world images as shown in the screenshots above.
+```
+smart-waste-classifier/
+├── api.py                  ← FastAPI inference endpoint
+├── app.py                  ← Streamlit web UI
+├── code.ipynb              ← Full training notebook
+├── data.dvc                ← DVC pointer to dataset
+├── requirements.txt        ← All dependencies
+├── assets/
+│   ├── streamlit_upload.png
+│   └── streamlit_result.png
+├── .dvc/                   ← DVC config
+└── .github/
+    └── workflows/
+        └── ci.yml          ← GitHub Actions CI pipeline
+```
 
 ---
 
 ## What I'd improve with more time
 
-- Deploy it to Streamlit Cloud or HuggingFace Spaces
-- Add Docker support for easier deployment
-- Collect more training data, especially for the trash category which is the hardest to classify
-- Add confidence threshold — if model is less than 60% confident, say "unclear"
+- Deploy to Streamlit Cloud or HuggingFace Spaces so anyone can try it
+- Add Docker support for one-command deployment
+- Collect more data for the trash category — it's the hardest to classify
+- Add a confidence threshold — if the model is below 60% confident, return "unclear" instead of a wrong guess
 
 ---
 
